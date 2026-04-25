@@ -1,27 +1,18 @@
-"""Streamlit web app for the Doss & Spaulding marketing-materials generator.
-
-Team workflow:
-  1. Type the address of an active listing (fuzzy match supported).
-  2. Click "Find listing" to pull details + all available photos.
-  3. Click five thumbnails in order: hero, then four grid tiles.
-  4. Hit "Generate flyer" and/or "Generate Instagram post".
-  5. Download the PDF / PNG.
-
-Deploy to Streamlit Community Cloud (or run locally with `streamlit run app.py`).
-"""
+"""Streamlit web app for the Doss & Spaulding marketing-materials generator."""
 from __future__ import annotations
 
 import io
 import os
-import tempfile
 from typing import List
 
+import cairosvg
 import streamlit as st
 from PIL import Image
 
 from scraper import find_listing, download_photo
 from flyer import render_flyer_image, save_pdf
 from instagram import render_instagram_image
+from layout import ASSETS_DIR
 
 
 # --- Page config ------------------------------------------------------------
@@ -36,17 +27,21 @@ st.set_page_config(
 _GOLD = "#a78248"
 
 st.markdown(
-    """
+    f"""
     <style>
-      .stApp {background-color: #fafafa;}
-      h1 {color: #111; font-weight: 800;}
-      .ds-accent {color: %s; font-weight: 700; letter-spacing: 0.06em;}
-      .slot-chip {display: inline-block; background: %s; color: white;
+      .stApp {{background-color: #ffffff;}}
+      h1 {{color: #111; font-weight: 800;}}
+      /* Gray input box with black text */
+      .stTextInput > div > div > input {{
+          background-color: #f0f0f0 !important;
+          color: #000000 !important;
+      }}
+      .slot-chip {{display: inline-block; background: {_GOLD}; color: white;
                   padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;
-                  font-weight: 700; margin-bottom: 4px;}
-      .muted {color: #555; font-size: 0.85rem;}
+                  font-weight: 700; margin-bottom: 4px;}}
+      .muted {{color: #555; font-size: 0.85rem;}}
     </style>
-    """ % (_GOLD, _GOLD),
+    """,
     unsafe_allow_html=True,
 )
 
@@ -56,9 +51,9 @@ st.markdown(
 if "listing" not in st.session_state:
     st.session_state.listing = None
 if "photo_images" not in st.session_state:
-    st.session_state.photo_images = []   # list[PIL.Image]
+    st.session_state.photo_images = []
 if "selection" not in st.session_state:
-    st.session_state.selection = []      # list[int] indices in click order
+    st.session_state.selection = []
 if "flyer_bytes" not in st.session_state:
     st.session_state.flyer_bytes = None
 if "ig_bytes" not in st.session_state:
@@ -70,12 +65,20 @@ def _reset_outputs():
     st.session_state.ig_bytes = None
 
 
-# --- Header -----------------------------------------------------------------
+@st.cache_data
+def _logo_image(width: int = 520):
+    png = cairosvg.svg2png(
+        url=os.path.join(ASSETS_DIR, "logo_horizontal.svg"),
+        output_width=width,
+    )
+    return Image.open(io.BytesIO(png)).convert("RGBA")
 
-st.markdown(
-    f'<span class="ds-accent">DOSS &amp; SPAULDING</span>',
-    unsafe_allow_html=True,
-)
+
+# --- Header (logo) ----------------------------------------------------------
+
+cols_h = st.columns([1, 2, 1])
+with cols_h[1]:
+    st.image(_logo_image(520), use_container_width=True)
 st.title("Listing Marketing Materials")
 st.caption(
     "Type a property address from the website, pick five photos, and generate "
@@ -114,7 +117,12 @@ if find_clicked and query.strip():
 
 listing = st.session_state.listing
 if listing is None:
-    st.info("Enter an address above and click **Find listing** to get started.")
+    st.info(
+        "Enter an address above and click **Find listing** to get started.\n\n"
+        "**Note:** This tool only pulls listings that are currently active on "
+        "[dspropertiesnc.com](https://www.dspropertiesnc.com/greensboro-homes-for-rent). "
+        "If you don't see your property, double-check that it's listed there."
+    )
     st.stop()
 
 
@@ -208,13 +216,8 @@ col_flyer, col_ig = st.columns(2)
 
 with col_flyer:
     st.markdown("**8.5 × 11 Flyer (PDF)**")
-    gen_flyer = st.button(
-        "Generate flyer",
-        type="primary",
-        disabled=not can_generate,
-        use_container_width=True,
-        key="btn_flyer",
-    )
+    gen_flyer = st.button("Generate flyer", type="primary", disabled=not can_generate,
+                          use_container_width=True, key="btn_flyer")
     if gen_flyer:
         with st.spinner("Rendering flyer…"):
             photos = [gallery[i] for i in sel]
@@ -238,13 +241,8 @@ with col_flyer:
 
 with col_ig:
     st.markdown("**1080 × 1080 Instagram post (PNG)**")
-    gen_ig = st.button(
-        "Generate Instagram post",
-        type="primary",
-        disabled=not can_generate,
-        use_container_width=True,
-        key="btn_ig",
-    )
+    gen_ig = st.button("Generate Instagram post", type="primary", disabled=not can_generate,
+                       use_container_width=True, key="btn_ig")
     if gen_ig:
         with st.spinner("Rendering Instagram post…"):
             photos = [gallery[i] for i in sel]
@@ -261,20 +259,17 @@ with col_ig:
             use_container_width=True,
         )
 
-# Previews
 if st.session_state.flyer_bytes or st.session_state.ig_bytes:
     st.subheader("Previews")
     pcol1, pcol2 = st.columns(2)
     if st.session_state.flyer_bytes:
         with pcol1:
             st.markdown("**Flyer (PDF)** — use the download button to get the original.")
-            # Render first page of the PDF as an image preview
             try:
-                import pdf2image  # optional; may not be installed
+                import pdf2image
                 preview = pdf2image.convert_from_bytes(st.session_state.flyer_bytes, dpi=100)[0]
                 st.image(preview, use_container_width=True)
             except Exception:
-                # Fall back: re-render the image directly for preview
                 photos = [gallery[i] for i in sel]
                 st.image(render_flyer_image(listing, photos), use_container_width=True)
     if st.session_state.ig_bytes:
