@@ -5,7 +5,6 @@ import io
 import os
 from typing import List
 
-import cairosvg
 import streamlit as st
 from PIL import Image
 
@@ -14,8 +13,6 @@ from flyer import render_flyer_image, save_pdf
 from instagram import render_instagram_image
 from layout import ASSETS_DIR
 
-
-# --- Page config ------------------------------------------------------------
 
 st.set_page_config(
     page_title="D&S Marketing Materials",
@@ -29,9 +26,7 @@ _GOLD = "#a78248"
 st.markdown(
     f"""
     <style>
-      .stApp {{background-color: #ffffff;}}
-      h1 {{color: #111; font-weight: 800;}}
-      /* Gray input box with black text */
+      h1, h2, h3 {{color: #ffffff;}}
       .stTextInput > div > div > input {{
           background-color: #f0f0f0 !important;
           color: #000000 !important;
@@ -39,25 +34,46 @@ st.markdown(
       .slot-chip {{display: inline-block; background: {_GOLD}; color: white;
                   padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;
                   font-weight: 700; margin-bottom: 4px;}}
-      .muted {{color: #555; font-size: 0.85rem;}}
+      .muted {{color: #aaa; font-size: 0.85rem;}}
+      .ds-logo-wrap {{text-align: center; margin: 0 0 24px 0;}}
+      .ds-logo-wrap svg {{max-width: 90%;}}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
+# --- Inline SVG logo (recolored for dark background) ------------------------
+
+@st.cache_data
+def _dark_logo_svg(width: int = 460) -> str:
+    with open(os.path.join(ASSETS_DIR, "logo_horizontal.svg"), "r", encoding="utf-8") as f:
+        svg = f.read()
+    # Recolor near-black fills to white so the logo reads on the dark theme
+    svg = svg.replace('fill="#000000"', 'fill="#ffffff"')
+    svg = svg.replace("fill='#000000'", "fill='#ffffff'")
+    svg = svg.replace('fill="#000"', 'fill="#fff"')
+    svg = svg.replace("fill='#000'", "fill='#fff'")
+    # Responsive sizing
+    svg = svg.replace(
+        "<svg ",
+        f'<svg style="width:{width}px; height:auto" ',
+        1,
+    )
+    return svg
+
+
 # --- Session state ----------------------------------------------------------
 
-if "listing" not in st.session_state:
-    st.session_state.listing = None
-if "photo_images" not in st.session_state:
-    st.session_state.photo_images = []
-if "selection" not in st.session_state:
-    st.session_state.selection = []
-if "flyer_bytes" not in st.session_state:
-    st.session_state.flyer_bytes = None
-if "ig_bytes" not in st.session_state:
-    st.session_state.ig_bytes = None
+for key, default in [
+    ("listing", None),
+    ("photo_images", []),
+    ("selection", []),
+    ("flyer_bytes", None),
+    ("ig_bytes", None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 
 def _reset_outputs():
@@ -65,20 +81,12 @@ def _reset_outputs():
     st.session_state.ig_bytes = None
 
 
-@st.cache_data
-def _logo_image(width: int = 520):
-    png = cairosvg.svg2png(
-        url=os.path.join(ASSETS_DIR, "logo_horizontal.svg"),
-        output_width=width,
-    )
-    return Image.open(io.BytesIO(png)).convert("RGBA")
-
-
 # --- Header (logo) ----------------------------------------------------------
 
-cols_h = st.columns([1, 2, 1])
-with cols_h[1]:
-    st.image(_logo_image(520), use_container_width=True)
+st.markdown(
+    f'<div class="ds-logo-wrap">{_dark_logo_svg(460)}</div>',
+    unsafe_allow_html=True,
+)
 st.title("Listing Marketing Materials")
 st.caption(
     "Type a property address from the website, pick five photos, and generate "
@@ -277,8 +285,6 @@ if st.session_state.flyer_bytes or st.session_state.ig_bytes:
             st.markdown("**Instagram post**")
             st.image(st.session_state.ig_bytes, use_container_width=True)
 
-
-# --- Footer -----------------------------------------------------------------
 
 st.markdown("---")
 st.caption(
