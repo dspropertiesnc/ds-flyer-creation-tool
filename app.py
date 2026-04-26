@@ -27,7 +27,12 @@ st.markdown(
     f"""
     <style>
       h1, h2, h3 {{color: #ffffff;}}
-      .stTextInput > div > div > input {{
+      .stTextInput > div > div > input,
+      .stSelectbox > div > div > div {{
+          background-color: #f0f0f0 !important;
+          color: #000000 !important;
+      }}
+      .stNumberInput > div > div > input {{
           background-color: #f0f0f0 !important;
           color: #000000 !important;
       }}
@@ -43,23 +48,15 @@ st.markdown(
 )
 
 
-# --- Inline SVG logo (recolored for dark background) ------------------------
-
 @st.cache_data
 def _dark_logo_svg(width: int = 460) -> str:
     with open(os.path.join(ASSETS_DIR, "logo_horizontal.svg"), "r", encoding="utf-8") as f:
         svg = f.read()
-    # Recolor near-black fills to white so the logo reads on the dark theme
     svg = svg.replace('fill="#000000"', 'fill="#ffffff"')
     svg = svg.replace("fill='#000000'", "fill='#ffffff'")
     svg = svg.replace('fill="#000"', 'fill="#fff"')
     svg = svg.replace("fill='#000'", "fill='#fff'")
-    # Responsive sizing
-    svg = svg.replace(
-        "<svg ",
-        f'<svg style="width:{width}px; height:auto" ',
-        1,
-    )
+    svg = svg.replace("<svg ", f'<svg style="width:{width}px; height:auto" ', 1)
     return svg
 
 
@@ -83,10 +80,7 @@ def _reset_outputs():
 
 # --- Header (logo) ----------------------------------------------------------
 
-st.markdown(
-    f'<div class="ds-logo-wrap">{_dark_logo_svg(460)}</div>',
-    unsafe_allow_html=True,
-)
+st.markdown(f'<div class="ds-logo-wrap">{_dark_logo_svg(460)}</div>', unsafe_allow_html=True)
 st.title("Listing Marketing Materials")
 st.caption(
     "Type a property address from the website, pick five photos, and generate "
@@ -134,17 +128,54 @@ if listing is None:
     st.stop()
 
 
-# --- Step 2: Listing summary ------------------------------------------------
+# --- Step 2: Confirm + edit listing details --------------------------------
 
 st.subheader("2 · Confirm the match")
+st.caption(
+    "Edit any field below before generating. Useful for things like splitting "
+    "out half-baths, adding a unit number, or fixing typos."
+)
 
-cols = st.columns(4)
-cols[0].metric("Rent", f"{listing.rent}/mo" if listing.rent else "—")
-cols[1].metric("Beds / Baths", f"{listing.beds or '—'} / {listing.baths or '—'}")
-cols[2].metric("Sqft", listing.sqft or "—")
-cols[3].metric("Type", listing.building_type or "—")
+# Address row
+addr_col, unit_col = st.columns([3, 1])
+with addr_col:
+    listing.address = st.text_input("Street address", value=listing.address or "")
+with unit_col:
+    new_unit = st.text_input("Unit (optional)", value=listing.unit or "")
+    listing.unit = new_unit.strip() or None
 
-st.markdown(f"**{listing.full_address}**")
+city_col, state_col, zip_col = st.columns([3, 1, 1])
+with city_col:
+    listing.city = st.text_input("City", value=listing.city or "")
+with state_col:
+    listing.state = st.text_input("State", value=listing.state or "")
+with zip_col:
+    listing.zip_code = st.text_input("Zip", value=listing.zip_code or "")
+
+# Stats row
+stat_cols = st.columns(6)
+with stat_cols[0]:
+    listing.rent = st.text_input("Rent", value=listing.rent or "")
+with stat_cols[1]:
+    listing.beds = st.text_input("Beds", value=str(listing.beds) if listing.beds else "")
+with stat_cols[2]:
+    listing.baths = st.text_input("Baths", value=str(listing.baths) if listing.baths else "",
+                                   help="Use decimals for half-baths (e.g. 2.5)")
+with stat_cols[3]:
+    listing.sqft = st.text_input("Sqft", value=str(listing.sqft) if listing.sqft else "")
+with stat_cols[4]:
+    type_options = ["Single Family", "Duplex", "Triplex", "Townhouse", "Condo", "Apartment", "Other"]
+    current_type = listing.building_type or "Single Family"
+    if current_type not in type_options:
+        type_options.insert(0, current_type)
+    listing.building_type = st.selectbox(
+        "Type", type_options, index=type_options.index(current_type),
+        help="Single Family → 'HOME FOR RENT' headline. Duplex/Condo/Townhouse/Apartment → 'UNIT FOR RENT'.",
+    )
+with stat_cols[5]:
+    listing.pets = st.text_input("Pets", value=listing.pets or "",
+                                  help="e.g. 'Yes', 'No', or specifics like 'Cats only'")
+
 st.markdown(f"[Open on dspropertiesnc.com ↗]({listing.url})")
 
 with st.expander("Scraped description (used for the About section)"):
